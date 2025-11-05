@@ -1,0 +1,13 @@
+#!/bin/bash
+# Smart copy script with notifications
+
+if [ -f "$1" ]; then
+    wl-copy < "$1"
+    notify-send "Copied to clipboard" "$(basename "$1")"
+elif [ -d "$1" ]; then
+    echo "$1" | wl-copy
+    notify-send "Path copied" "$1"
+else
+    echo "$1" | wl-copy
+    notify-send "Text copied" "$1"
+fi

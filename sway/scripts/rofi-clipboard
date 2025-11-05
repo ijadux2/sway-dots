@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# Simple Rofi Clipboard Manager for Sway
+
+# Check if cliphist has any history
+if ! cliphist list &>/dev/null; then
+  notify-send "Clipboard" "No clipboard history yet"
+  exit 0
+fi
+
+# Show clipboard history with rofi and copy selected item
+selected=$(cliphist list | rofi -dmenu -p "Clipboard History" -i theme ~/.config/rofi/clipboard.rasi)
+
+if [ -n "$selected" ]; then
+  echo "$selected" | cliphist decode | wl-copy
+  notify-send "Clipboard" "Copied to clipboard"
+fi

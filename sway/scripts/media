@@ -1,0 +1,175 @@
+#!/bin/bash
+
+CHOICE=$(echo -e "Play/Pause\nNext\nPrevious\nStop\nStatus\nBluetooth Devices\nNetwork" | rofi -dmenu -p "  Controls" -theme ~/.local/share/rofi/themes/rounded-nord-dark.rasi)
+
+case "$CHOICE" in
+"Play/Pause") playerctl play-pause ;;
+"Next") playerctl next ;;
+"Previous") playerctl previous ;;
+"Stop") playerctl stop ;;
+"Status")
+  status="$(playerctl status 2>/dev/null)"
+  artist="$(playerctl metadata artist 2>/dev/null)"
+  title="$(playerctl metadata title 2>/dev/null)"
+  rofi -e "Status: $status\n$artist – $title" -theme ~/.config/rofi/powermenu.rasi
+  ;;
+"Network")
+  # WiFi Network Submenu
+  NET_CHOICE=$(echo -e "📶 Connect to WiFi\n🔄 Refresh Networks\n📋 Saved Connections\n❌ Disconnect\n🔧 Settings" | rofi -dmenu -p "Network Manager" -theme ~/.local/share/rofi/themes/rounded-nord-dark.rasi)
+
+  case "$NET_CHOICE" in
+  "📶 Connect to WiFi")
+    # Get list of available WiFi networks
+    wifi_list=$(nmcli -f SSID,SECURITY,SIGNAL device wifi list | tail -n +2 | sed 's/^/  /')
+    selected=$(echo "$wifi_list" | rofi -dmenu -p "Select WiFi" -i -theme ~/.local/share/rofi/themes/rounded-nord-dark.rasi)
+
+    if [ -n "$selected" ]; then
+      ssid=$(echo "$selected" | awk '{print $1}')
+      security=$(echo "$selected" | awk '{print $2}')
+
+      if [ "$security" != "--" ]; then
+        # Network requires password
+        password=$(rofi -dmenu -p "🔐 Password for $ssid" -password -theme ~/.local/share/rofi/themes/rounded-nord-dark.rasi)
+        if [ -n "$password" ]; then
+          nmcli device wifi connect "$ssid" password "$password"
+          if [ $? -eq 0 ]; then
+            notify-send "WiFi Connected" "Successfully connected to $ssid" -i network-wireless
+          else
+            notify-send "WiFi Error" "Failed to connect to $ssid" -u critical -i network-wireless-offline
+          fi
+        fi
+      else
+        # Open network, no password
+        nmcli device wifi connect "$ssid"
+        if [ $? -eq 0 ]; then
+          notify-send "WiFi Connected" "Successfully connected to $ssid" -i network-wireless
+        else
+          notify-send "WiFi Error" "Failed to connect to $ssid" -u critical -i network-wireless-offline
+        fi
+      fi
+    fi
+    ;;
+
+  "🔄 Refresh Networks")
+    nmcli device wifi rescan
+    notify-send "WiFi" "Refreshing network list..." -i network-wireless
+    sleep 2
+    # Reopen network menu
+    exec "$0" && CHOICE="Network" && exec "$0"
+    ;;
+
+  "📋 Saved Connections")
+    # Show saved WiFi connections
+    saved=$(nmcli -t -f NAME,TYPE connection show | grep "802-11-wireless" | cut -d':' -f1)
+    selected=$(echo "$saved" | rofi -dmenu -p "Saved Connections" -i -theme ~/.local/share/rofi/themes/rounded-nord-dark.rasi)
+
+    if [ -n "$selected" ]; then
+      nmcli connection up "$selected"
+      if [ $? -eq 0 ]; then
+        notify-send "WiFi Connected" "Connected to $selected" -i network-wireless
+      else
+        notify-send "WiFi Error" "Failed to connect to $selected" -u critical -i network-wireless-offline
+      fi
+    fi
+    ;;
+
+  "❌ Disconnect")
+    # Get active WiFi connection
+    active=$(nmcli -t -f NAME,TYPE,DEVICE connection show --active | grep "wireless" | cut -d':' -f1)
+    if [ -n "$active" ]; then
+      nmcli connection down "$active"
+      notify-send "WiFi Disconnected" "Disconnected from $active" -i network-wireless-offline
+    else
+      notify-send "WiFi" "No active WiFi connection" -i network-wireless-offline
+    fi
+    ;;
+
+  "🔧 Settings")
+    nm-connection-editor &
+    ;;
+  esac
+  ;;
+
+"Bluetooth Devices")
+  # Bluetooth Submenu
+  BT_CHOICE=$(echo -e "📱 Paired Devices\n🔍 Scan Devices\n⚡ Power Toggle\n🔧 Settings" | rofi -dmenu -p "Bluetooth" -theme ~/.local/share/rofi/themes/rounded-nord-dark.rasi)
+
+  case "$BT_CHOICE" in
+  "📱 Paired Devices")
+    # List paired devices
+    devices=$(bluetoothctl devices Paired | awk '{print substr($0, index($0,$3))}')
+
+    if [ -z "$devices" ]; then
+      rofi -e "No paired devices found" -theme ~/.config/rofi/powermenu.rasi
+    else
+      selected=$(echo "$devices" | rofi -dmenu -p "Select Device" -theme ~/.local/share/rofi/themes/rounded-nord-dark.rasi)
+
+      if [ -n "$selected" ]; then
+        # Get device MAC address
+        mac=$(bluetoothctl devices Paired | grep "$selected" | awk '{print $2}')
+
+        # Check if device is connected
+        is_connected=$(bluetoothctl info "$mac" | grep "Connected: yes")
+
+        if [ -n "$is_connected" ]; then
+          # Disconnect
+          bluetoothctl disconnect "$mac"
+          notify-send "Bluetooth" "Disconnected from $selected" -i bluetooth-disabled
+        else
+          # Connect
+          bluetoothctl connect "$mac"
+          notify-send "Bluetooth" "Connecting to $selected..." -i bluetooth
+        fi
+      fi
+    fi
+    ;;
+
+  "🔍 Scan Devices")
+    notify-send "Bluetooth" "Scanning for devices..." -i bluetooth
+    bluetoothctl scan on &
+    scan_pid=$!
+    sleep 5
+    kill $scan_pid 2>/dev/null
+
+    # Show discovered devices
+    devices=$(bluetoothctl devices | awk '{print substr($0, index($0,$3))}')
+    selected=$(echo "$devices" | rofi -dmenu -p "Available Devices" -theme ~/.local/share/rofi/themes/rounded-nord-dark.rasi)
+
+    if [ -n "$selected" ]; then
+      mac=$(bluetoothctl devices | grep "$selected" | awk '{print $2}')
+
+      # Pair and connect
+      bluetoothctl pair "$mac"
+      bluetoothctl trust "$mac"
+      bluetoothctl connect "$mac"
+      notify-send "Bluetooth" "Pairing with $selected..." -i bluetooth
+    fi
+    ;;
+
+  "⚡ Power Toggle")
+    bt_status=$(bluetoothctl show | grep "Powered" | awk '{print $2}')
+
+    if [ "$bt_status" = "yes" ]; then
+      bluetoothctl power off
+      notify-send "Bluetooth" "Bluetooth turned off" -i bluetooth-disabled
+    else
+      bluetoothctl power on
+      notify-send "Bluetooth" "Bluetooth turned on" -i bluetooth
+    fi
+    ;;
+
+  "🔧 Settings")
+    # Open Bluetooth settings (GNOME/KDE)
+    if command -v blueman-manager &>/dev/null; then
+      blueman-manager &
+    elif command -v gnome-control-center &>/dev/null; then
+      gnome-control-center bluetooth &
+    else
+      notify-send "Error" "No Bluetooth manager found" -u critical
+    fi
+    ;;
+  esac
+  ;;
+
+*) exit 1 ;;
+esac

@@ -1,0 +1,36 @@
+#!/bin/bash
+
+# Screenshot menu script for Sway
+
+screenshot_dir="$HOME/Pictures/Screenshots"
+mkdir -p "$screenshot_dir"
+
+options="Full Screen\nSelect Area\nActive Window\nFull to Clipboard\nArea to Clipboard\nEdit Screenshot"
+
+choice=$(echo -e "$options" | rofi -dmenu -p "Screenshot" -theme ~/.local/share/rofi/themes/rounded-nord-dark.rasi)
+
+case $choice in
+    "Full Screen")
+        grim "$screenshot_dir/screenshot-$(date +%Y%m%d-%H%M%S).png"
+        notify-send "Screenshot" "Full screen saved"
+        ;;
+    "Select Area")
+        grim -g "$(slurp)" "$screenshot_dir/screenshot-$(date +%Y%m%d-%H%M%S).png"
+        notify-send "Screenshot" "Area saved"
+        ;;
+    "Active Window")
+        grim -g "$(swaymsg -t get_tree | jq -r '.. | select(.focused?) | .rect | "\(.x),\(.y) \(.width)x\(.height)"')" "$screenshot_dir/screenshot-$(date +%Y%m%d-%H%M%S).png"
+        notify-send "Screenshot" "Window saved"
+        ;;
+    "Full to Clipboard")
+        grim - | wl-copy
+        notify-send "Screenshot" "Full screen copied to clipboard"
+        ;;
+    "Area to Clipboard")
+        grim -g "$(slurp)" - | wl-copy
+        notify-send "Screenshot" "Area copied to clipboard"
+        ;;
+    "Edit Screenshot")
+        grim -g "$(slurp)" - | swappy -f -
+        ;;
+esac

@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+
+## Simple power menu script
+
+# Options
+shutdown='⏻  Shutdown'
+reboot='#  Reboot'
+lock='@  Lock'
+suspend='⏾  Suspend'
+logout='$  Logout'
+
+# Get answer from user
+chosen=$(echo -e "$lock\n$suspend\n$logout\n$reboot\n$shutdown" | rofi -dmenu -i -p "Power Menu" -theme ~/.local/share/rofi/themes/rounded-nord-dark.rasi)
+
+# Do action based on choice
+case $chosen in
+$shutdown)
+  systemctl poweroff
+  ;;
+$reboot)
+  systemctl reboot
+  ;;
+$lock)
+  swaylock # or your lock command
+  ;;
+$suspend)
+  systemctl suspend
+  ;;
+$logout)
+  swaymsg exit # for Sway
+  # hyprctl dispatch exit # for Hyprland
+  ;;
+esac
